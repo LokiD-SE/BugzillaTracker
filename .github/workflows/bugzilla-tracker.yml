@@ -32,7 +32,6 @@ jobs:
         echo "BUGZILLA_URL=${{ secrets.BUGZILLA_URL }}" >> .env
         echo "BUGZILLA_API_KEY=${{ secrets.BUGZILLA_API_KEY }}" >> .env
         echo "GOOGLE_CHAT_WEBHOOK=${{ secrets.GOOGLE_CHAT_WEBHOOK }}" >> .env
-        echo "CHECK_INTERVAL_MINUTES=1" >> .env
         echo "BUG_STATUS=${{ secrets.BUG_STATUS || 'UNCONFIRMED,CONFIRMED,NEEDS_INFO,IN_PROGRESS,IN_PROGRESS_DEV,RESOLVED,REOPENED' }}" >> .env
         echo "PRODUCT=${{ secrets.PRODUCT || '' }}" >> .env
         echo "EMAIL=${{ secrets.EMAIL }}" >> .env

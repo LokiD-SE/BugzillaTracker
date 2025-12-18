@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import requests
 from datetime import datetime, timedelta, timezone
-from config import BUGZILLA_URL, GOOGLE_CHAT_WEBHOOK, CHECK_INTERVAL_MINUTES, get_query_params, BUGZILLA_BASE_URL
+from config import BUGZILLA_URL, GOOGLE_CHAT_WEBHOOK, get_query_params, BUGZILLA_BASE_URL
 
 # State file to track bug statuses
 STATE_FILE = Path(__file__).parent / 'bug_state.json'
@@ -42,15 +42,17 @@ def save_bug_state(bug_states):
 
 def fetch_all_bugs():
     """
-    Fetch all bugs matching the configured filters (no time restriction).
+    Fetch bugs matching the configured filters from the last 2 months.
     
     Returns:
         List of bugs
     """
     query_params = get_query_params()
-    # Don't add last_change_time - fetch all bugs matching filters
+    # Add last_change_time filter for 2 months of data
+    two_months_ago = (datetime.now(timezone.utc) - timedelta(days=60)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    query_params['last_change_time'] = two_months_ago
     
-    print("Fetching all bugs matching filters...")
+    print(f"Fetching bugs changed in the last 2 months (since {two_months_ago})...")
     
     try:
         response = requests.get(BUGZILLA_URL, params=query_params)
