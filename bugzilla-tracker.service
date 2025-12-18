@@ -1,0 +1,16 @@
+[Unit]
+Description=Bugzilla Tracker Service
+After=network.target
+
+[Service]
+Type=simple
+User=your-username
+WorkingDirectory=/path/to/BugzillaTracker
+Environment="PATH=/path/to/BugzillaTracker/venv/bin"
+ExecStart=/path/to/BugzillaTracker/venv/bin/python /path/to/BugzillaTracker/main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+

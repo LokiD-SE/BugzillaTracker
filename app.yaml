@@ -1,0 +1,27 @@
+name: bugzilla-tracker
+region: nyc
+
+services:
+- name: worker
+  source_dir: .
+  github:
+    repo: your-username/BugzillaTracker
+    branch: main
+  run_command: python main.py
+  environment_slug: python
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  envs:
+  - key: BUGZILLA_API_KEY
+    value: ${BUGZILLA_API_KEY}
+    scope: RUN_TIME
+  - key: GOOGLE_CHAT_WEBHOOK
+    value: ${GOOGLE_CHAT_WEBHOOK}
+    scope: RUN_TIME
+  - key: EMAIL
+    value: ${EMAIL}
+    scope: RUN_TIME
+  - key: CHECK_INTERVAL_MINUTES
+    value: "5"
+    scope: RUN_TIME
+

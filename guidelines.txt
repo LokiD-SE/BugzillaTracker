@@ -1,0 +1,87 @@
+#Project Structure:
+
+BugzillaTracker/
+├── .env                # Local environment variables (API keys, Webhook URLs)
+├── .gitignore          # Keeps your .env and __pycache__ out of version control
+├── requirements.txt    # List of Python dependencies
+├── main.py             # Entry point (the loop that runs the script)
+├── config.py           # Configuration loader (reads .env and defines constants)
+└── notifier.py         # Logic for querying Bugzilla and formatting Chat messages
+
+#Solution
+Your provided URL contains specific filters (Status, Component, Product, and Email). To use this in a script, you need to convert it to a REST API query.
+
+Base API URL: https://bugzilla.bizom.in/rest/bug
+
+Your Query Parameters:
+
+bug_status: UNCONFIRMED, CONFIRMED, etc.
+
+component: API, Backend, etc.
+
+email1: lokesh.devamuthu@mobisy.com
+
+product: BizomWeb, Mobile App
+
+Step 3: Create the Integration Script (Python)
+You can run this script on a local server, a VPS, or a cloud function (like AWS Lambda or Google Cloud Functions). This script checks for bugs modified in the last X minutes and posts them to Chat.
+
+Python
+
+import requests
+import time
+from datetime import datetime, timedelta
+
+# --- CONFIGURATION ---
+BUGZILLA_URL = "https://bugzilla.bizom.in/rest/bug"
+GOOGLE_CHAT_WEBHOOK = "https://chat.googleapis.com/v1/spaces/AAAAu1J2E2g/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=3jFB5fa7aLRZaffagHDft5Bpj_BKSbj2eyaV0VE0g0g"
+CHECK_INTERVAL_MINUTES = 60
+
+# Your specific filters from the URL
+QUERY_PARAMS = {
+    "bug_status": ["UNCONFIRMED", "CONFIRMED", "IN_PROGRESS", "RESOLVED", "RE-OPENED"],
+    "product": ["BizomWeb", "Mobile App"],
+    "email1": "lokesh.devamuthu@mobisy.com",
+    "emailtype1": "substring",
+    "emailassigned_to1": 1,
+    "last_change_time": "" # Will be updated dynamically
+}
+
+def check_bugzilla():
+    # Only look for bugs changed since the last check
+    since_time = (datetime.utcnow() - timedelta(minutes=CHECK_INTERVAL_MINUTES)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    QUERY_PARAMS["last_change_time"] = since_time
+    
+    try:
+        response = requests.get(BUGZILLA_URL, params=QUERY_PARAMS)
+        bugs = response.json().get('bugs', [])
+        
+        for bug in bugs:
+            send_to_google_chat(bug)
+    except Exception as e:
+        print(f"Error checking Bugzilla: {e}")
+
+def send_to_google_chat(bug):
+    text = (
+        f"🐞 *Bug Updated: #{bug['id']}*\n"
+        f"*Summary:* {bug['summary']}\n"
+        f"*Status:* {bug['status']} | *Component:* {bug['component']}\n"
+        f"🔗 https://bugzilla.bizom.in/show_bug.cgi?id={bug['id']}"
+    )
+    
+    payload = {"text": text}
+    requests.post(GOOGLE_CHAT_WEBHOOK, json=payload)
+
+if __name__ == "__main__":
+    print("Monitoring Bugzilla...")
+    while True:
+        check_bugzilla()
+        time.sleep(CHECK_INTERVAL_MINUTES * 60)
+Step 4: Automating the "Constantly Updating" Part
+To ensure this runs 24/7, you have three main options:
+
+GitHub Actions (Free-ish): Set up a workflow that runs every 5–15 minutes using a cron schedule.
+
+Server/Local Machine: Run the script as a background service (using nohup or pm2).
+
+Cloud Scheduler + Cloud Function: (Recommended for reliability) Use Google Cloud Platform to trigger a small piece of code every few minutes to check for updates.
