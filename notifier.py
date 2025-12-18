@@ -40,33 +40,23 @@ def save_bug_state(bug_states):
         print(f"Warning: Could not save bug state file: {e}")
 
 
-def fetch_initial_bugs(months_ago=1):
+def fetch_all_bugs():
     """
-    Fetch bugs from the last N months for initial run.
-    Uses last_change_time in YYYY-MM-DD format (e.g., 2025-11-01).
-    
-    Args:
-        months_ago: Number of months to look back (default: 1)
+    Fetch all bugs matching the configured filters (no time restriction).
     
     Returns:
         List of bugs
     """
     query_params = get_query_params()
+    # Don't add last_change_time - fetch all bugs matching filters
     
-    # Calculate date N months ago
-    target_date = datetime.now(timezone.utc) - timedelta(days=months_ago * 30)
-    last_change_date = target_date.strftime('%Y-%m-%d')
-    
-    # Add last_change_time in YYYY-MM-DD format (not full datetime)
-    query_params["last_change_time"] = last_change_date
-    
-    print(f"Fetching bugs changed since {last_change_date} (last {months_ago} months)...")
+    print("Fetching all bugs matching filters...")
     
     try:
         response = requests.get(BUGZILLA_URL, params=query_params)
         response.raise_for_status()
         bugs = response.json().get('bugs', [])
-        print(f"Found {len(bugs)} bug(s) from the last {months_ago} months")
+        print(f"Found {len(bugs)} bug(s)")
         return bugs
     except requests.exceptions.RequestException as e:
         print(f"Error fetching bugs from Bugzilla: {e}")
@@ -76,71 +66,50 @@ def fetch_initial_bugs(months_ago=1):
         return []
 
 
-def check_bugzilla(is_initial_run=False):
+def check_bugzilla():
     """
-    Check Bugzilla for bugs modified in the last CHECK_INTERVAL_MINUTES.
+    Fetch all bugs matching filters and track status changes.
     Returns a tuple: (status_changed_bugs, all_bugs_info)
     - status_changed_bugs: List of bugs that have changed status
-    - all_bugs_info: List of tuples (bug_id, status) for all current bugs (only on initial run)
+    - all_bugs_info: List of tuples (bug_id, status, product) for all current bugs
     """
-    # Load previous states to check if this is an initial run
+    # Load previous states
     previous_states = load_bug_state()
-    is_initial = is_initial_run or len(previous_states) == 0
     
-    if is_initial:
-        # On initial run, fetch bugs from last 1 month
-        print("Initial run detected. Fetching bugs from last 1 month...")
-        bugs = fetch_initial_bugs(months_ago=1)
-        all_bugs_info = []
-    else:
-        # Only look for bugs changed since the last check
-        since_time = (datetime.now(timezone.utc) - timedelta(minutes=CHECK_INTERVAL_MINUTES)).strftime('%Y-%m-%dT%H:%M:%SZ')
-        query_params = get_query_params()
-        query_params["last_change_time"] = since_time
-        
-        try:
-            response = requests.get(BUGZILLA_URL, params=query_params)
-            response.raise_for_status()
-            bugs = response.json().get('bugs', [])
-        except requests.exceptions.RequestException as e:
-            print(f"Error checking Bugzilla: {e}")
-            return [], []
-        except Exception as e:
-            print(f"Unexpected error checking Bugzilla: {e}")
-            return [], []
-        
-        all_bugs_info = None
-    
-    # Track current states and find status changes
-    current_states = previous_states.copy()
+    # Fetch all bugs (no time filter)
+    bugs = fetch_all_bugs()
+    all_bugs_info = []
     status_changed_bugs = []
+    
+    # Track current states
+    current_states = previous_states.copy()
     
     for bug in bugs:
         bug_id = bug.get('id')
         current_status = bug.get('status', 'Unknown')
+        product = bug.get('product', 'Unknown')
         
         if bug_id:
             bug_id_str = str(bug_id)
             # Update current state
             current_states[bug_id_str] = current_status
             
-            if is_initial:
-                # On initial run, collect all bugs info
-                all_bugs_info.append((bug_id, current_status))
-            else:
-                # Check if status has changed
-                previous_status = previous_states.get(bug_id_str)
-                if previous_status and previous_status != current_status:
-                    # Store previous status in bug dict for notification
-                    bug['_previous_status'] = previous_status
-                    status_changed_bugs.append(bug)
-                    print(f"Status change detected for bug #{bug_id}: {previous_status} -> {current_status}")
-                elif not previous_status:
-                    # New bug we haven't seen before - treat as status change
-                    status_changed_bugs.append(bug)
-                    print(f"New bug detected: #{bug_id} with status {current_status}")
+            # Collect all bugs info with product
+            all_bugs_info.append((bug_id, current_status, product))
+            
+            # Check if status has changed
+            previous_status = previous_states.get(bug_id_str)
+            if previous_status and previous_status != current_status:
+                # Store previous status in bug dict for notification
+                bug['_previous_status'] = previous_status
+                status_changed_bugs.append(bug)
+                print(f"Status change detected for bug #{bug_id}: {previous_status} -> {current_status}")
+            elif not previous_status:
+                # New bug we haven't seen before
+                status_changed_bugs.append(bug)
+                print(f"New bug detected: #{bug_id} with status {current_status}")
     
-    # Save current states for next check (includes all tracked bugs)
+    # Save current states for next check
     save_bug_state(current_states)
     
     return status_changed_bugs, all_bugs_info
@@ -151,7 +120,7 @@ def send_initial_list_to_google_chat(all_bugs_info):
     Send the initial list of bugs to Google Chat.
     
     Args:
-        all_bugs_info: List of tuples (bug_id, status) for all bugs
+        all_bugs_info: List of tuples (bug_id, status, product) for all bugs
     """
     if not GOOGLE_CHAT_WEBHOOK:
         print("Warning: GOOGLE_CHAT_WEBHOOK not configured. Skipping notification.")
@@ -168,9 +137,9 @@ def send_initial_list_to_google_chat(all_bugs_info):
     
     # Build the list
     bug_list = []
-    for index, (bug_id, status) in enumerate(sorted_bugs, start=1):
+    for index, (bug_id, status, product) in enumerate(sorted_bugs, start=1):
         bug_url = f"{BUGZILLA_BASE_URL}/show_bug.cgi?id={bug_id}"
-        bug_list.append(f"{index}. \"{bug_url}\" - {status}")
+        bug_list.append(f"{index}. \"{bug_url}\" - {status} - {product}")
     
     text = header + "\n".join(bug_list)
     

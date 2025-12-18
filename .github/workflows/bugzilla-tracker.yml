@@ -2,10 +2,8 @@ name: Bugzilla Tracker
 
 on:
   schedule:
-    # Run at 10 AM every day (for initial bug list)
+    # Run at 10 AM every day
     - cron: '0 10 * * *'
-    # Run every 1 hour (for status change checks)
-    - cron: '0 * * * *'
   workflow_dispatch:  # Allow manual trigger
 
 permissions:
@@ -29,60 +27,19 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: Check if it's 10 AM (daily initial run)
-      id: check_time
-      run: |
-        CURRENT_HOUR=$(date -u +%H)
-        if [ "$CURRENT_HOUR" = "10" ]; then
-          echo "is_10am=true" >> $GITHUB_OUTPUT
-          echo "It's 10 AM - will fetch initial bug list"
-        else
-          echo "is_10am=false" >> $GITHUB_OUTPUT
-          echo "Hourly check - will only check for status changes"
-        fi
-        
     - name: Create .env file
-      env:
-        IS_10AM: ${{ steps.check_time.outputs.is_10am }}
       run: |
         echo "BUGZILLA_URL=${{ secrets.BUGZILLA_URL }}" >> .env
         echo "BUGZILLA_API_KEY=${{ secrets.BUGZILLA_API_KEY }}" >> .env
         echo "GOOGLE_CHAT_WEBHOOK=${{ secrets.GOOGLE_CHAT_WEBHOOK }}" >> .env
-        # For hourly checks, use 60 minutes; for daily initial, use 1 (doesn't matter)
-        if [ "$IS_10AM" = "true" ]; then
-          echo "CHECK_INTERVAL_MINUTES=1" >> .env
-        else
-          echo "CHECK_INTERVAL_MINUTES=60" >> .env
-        fi
+        echo "CHECK_INTERVAL_MINUTES=1" >> .env
         echo "BUG_STATUS=${{ secrets.BUG_STATUS || 'UNCONFIRMED,CONFIRMED,NEEDS_INFO,IN_PROGRESS,IN_PROGRESS_DEV,RESOLVED,REOPENED' }}" >> .env
         echo "PRODUCT=${{ secrets.PRODUCT || '' }}" >> .env
         echo "EMAIL=${{ secrets.EMAIL }}" >> .env
         
-    - name: Initialize or reset state file
-      env:
-        IS_10AM: ${{ steps.check_time.outputs.is_10am }}
-      run: |
-        if [ "$IS_10AM" = "true" ]; then
-          # Reset state file for fresh daily fetch
-          echo "{}" > bug_state.json
-          echo "State file reset for daily initial run"
-        else
-          # Initialize state file if it doesn't exist
-          if [ ! -f bug_state.json ]; then
-            echo "{}" > bug_state.json
-            echo "State file initialized"
-          fi
-        fi
-        
     - name: Run Bugzilla Tracker
-      env:
-        IS_10AM: ${{ steps.check_time.outputs.is_10am }}
       run: |
-        if [ "$IS_10AM" = "true" ]; then
-          python main.py --single-run --daily-initial || true
-        else
-          python main.py --single-run || true
-        fi
+        python main.py --single-run --daily-initial || true
         
     - name: Commit and push state file
       if: always()
