@@ -17,13 +17,12 @@ GitHub Actions can run your script on a schedule for free (with limits).
      - `BUGZILLA_URL`
      - `EMAIL`
      - `BUG_STATUS`
-     - `CHECK_INTERVAL_MINUTES`
+     - `PRODUCT` (optional)
 
 3. **Push to GitHub** - the workflow will run automatically
 
 **Schedule:**
-- **10 AM daily**: Fetches and posts initial bug list (from last 1 month)
-- **Every hour**: Checks for status changes and notifies
+- **10 AM IST daily**: Fetches and posts initial bug list (from last 2 months)
 
 **Pros:** Free, easy setup, no server management  
 **Cons:** Limited to 2000 minutes/month on free tier, state file needs to be stored in repo

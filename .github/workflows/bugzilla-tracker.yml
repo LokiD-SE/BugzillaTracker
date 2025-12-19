@@ -2,8 +2,10 @@ name: Bugzilla Tracker
 
 on:
   schedule:
-    # Run at 10 AM every day
-    - cron: '0 10 * * *'
+    # Run at 10 AM IST (Indian Standard Time) every day
+    # IST is UTC+5:30, so 10:00 AM IST = 4:30 AM UTC
+    # Cron format: minute hour day month weekday
+    - cron: '30 4 * * *'
   workflow_dispatch:  # Allow manual trigger
 
 permissions:
