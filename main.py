@@ -4,7 +4,7 @@ Entry point for Bugzilla Tracker.
 Main loop that continuously monitors Bugzilla for updates and sends notifications.
 """
 import sys
-from notifier import check_bugzilla, send_to_google_chat, send_initial_list_to_google_chat, STATE_FILE, save_bug_state
+from notifier import check_bugzilla, send_to_google_chat, send_initial_list_to_google_chat, STATE_FILE, save_bug_state, organize_bugs_by_product
 from config import BUGZILLA_BASE_URL
 
 
@@ -29,18 +29,39 @@ def main(single_run=False, daily_initial=False):
         # Fetch all bugs and check for status changes
         status_changed_bugs, all_bugs_info = check_bugzilla()
         
-        # Print all bugs with product
-        if all_bugs_info and len(all_bugs_info) > 0:
+        # Filter out Internal Tools bugs with RESOLVED status
+        filtered_bugs_info = [
+            bug_info for bug_info in all_bugs_info
+            if not (bug_info[2] == "Internal Tools" and bug_info[1] == "RESOLVED")
+        ]
+        
+        # Print all bugs organized by product with status-wise sorting
+        if filtered_bugs_info and len(filtered_bugs_info) > 0:
+            bugs_by_product = organize_bugs_by_product(filtered_bugs_info)
+            
+            # Define product order
+            product_order = ["Bizom Web", "Mobile App", "Internal Tools"]
+            other_products = [p for p in bugs_by_product.keys() if p not in product_order]
+            product_order.extend(sorted(other_products))
+            
             print(f"\n{'='*60}")
-            print(f"Found {len(all_bugs_info)} bug(s):")
-            print(f"{'='*60}")
-            for index, (bug_id, status, product) in enumerate(sorted(all_bugs_info, key=lambda x: x[0]), start=1):
-                bug_url = f"{BUGZILLA_BASE_URL}/show_bug.cgi?id={bug_id}"
-                print(f'{index}."{bug_url}" - {status} - {product}')
+            print(f"Found {len(filtered_bugs_info)} bug(s) (excluding Internal Tools - RESOLVED):")
             print(f"{'='*60}\n")
             
-            # Send initial list to Google Chat
-            send_initial_list_to_google_chat(all_bugs_info)
+            for product in product_order:
+                if product in bugs_by_product:
+                    bugs = bugs_by_product[product]
+                    print(f"{product} - {len(bugs)} bug(s) (sorted by status):")
+                    print("-" * 60)
+                    for bug_id, status, _ in bugs:
+                        bug_url = f"{BUGZILLA_BASE_URL}/show_bug.cgi?id={bug_id}"
+                        print(f'  • "{bug_url}" - {status}')
+                    print()
+            
+            print(f"{'='*60}\n")
+            
+            # Send initial list to Google Chat (using filtered bugs)
+            send_initial_list_to_google_chat(filtered_bugs_info)
         
         # Print and notify status changes
         if status_changed_bugs:

@@ -117,9 +117,85 @@ def check_bugzilla():
     return status_changed_bugs, all_bugs_info
 
 
+def organize_bugs_by_product(all_bugs_info):
+    """
+    Organize bugs by product and sort by status within each product.
+    
+    Args:
+        all_bugs_info: List of tuples (bug_id, status, product) for all bugs
+    
+    Returns:
+        Dictionary mapping product names to sorted lists of bugs
+    """
+    # Define status priority for sorting (lower number = higher priority)
+    status_priority = {
+        'IN_PROGRESS': 1,
+        'IN_PROGRESS_DEV': 2,
+        'CONFIRMED': 3,
+        'NEEDS_INFO': 4,
+        'UNCONFIRMED': 5,
+        'REOPENED': 6,
+        'RESOLVED': 7,
+    }
+    
+    # Group bugs by product
+    bugs_by_product = {}
+    for bug_info in all_bugs_info:
+        product = bug_info[2]  # product is the third element
+        if product not in bugs_by_product:
+            bugs_by_product[product] = []
+        bugs_by_product[product].append(bug_info)
+    
+    # Sort bugs within each product: first by status priority, then by bug_id
+    for product in bugs_by_product:
+        bugs_by_product[product].sort(
+            key=lambda x: (
+                status_priority.get(x[1], 999),  # status priority
+                x[0]  # bug_id as tiebreaker
+            )
+        )
+    
+    return bugs_by_product
+
+
+def format_bugs_by_product(all_bugs_info):
+    """
+    Format bugs organized by product with status-wise sorting.
+    
+    Args:
+        all_bugs_info: List of tuples (bug_id, status, product) for all bugs
+    
+    Returns:
+        Formatted string with bugs organized by product sections
+    """
+    bugs_by_product = organize_bugs_by_product(all_bugs_info)
+    
+    # Define product order
+    product_order = ["Bizom Web", "Mobile App", "Internal Tools"]
+    
+    # Add any other products that aren't in the predefined list
+    other_products = [p for p in bugs_by_product.keys() if p not in product_order]
+    product_order.extend(sorted(other_products))
+    
+    sections = []
+    total_bugs = len(all_bugs_info)
+    sections.append(f"📋 *Initial Bug List - {total_bugs} bug(s) found*\n")
+    
+    for product in product_order:
+        if product in bugs_by_product:
+            bugs = bugs_by_product[product]
+            sections.append(f"\n*{product}* - {len(bugs)} bug(s) (sorted by status):")
+            
+            for bug_id, status, _ in bugs:
+                bug_url = f"{BUGZILLA_BASE_URL}/show_bug.cgi?id={bug_id}"
+                sections.append(f"  • \"{bug_url}\" - {status}")
+    
+    return "\n".join(sections)
+
+
 def send_initial_list_to_google_chat(all_bugs_info):
     """
-    Send the initial list of bugs to Google Chat.
+    Send the initial list of bugs to Google Chat, organized by product with status-wise sorting.
     
     Args:
         all_bugs_info: List of tuples (bug_id, status, product) for all bugs
@@ -131,26 +207,15 @@ def send_initial_list_to_google_chat(all_bugs_info):
     if not all_bugs_info or len(all_bugs_info) == 0:
         return
     
-    # Sort bugs by ID
-    sorted_bugs = sorted(all_bugs_info, key=lambda x: x[0])
-    
-    # Format the message
-    header = f"📋 *Initial Bug List - {len(sorted_bugs)} bug(s) found*\n\n"
-    
-    # Build the list
-    bug_list = []
-    for index, (bug_id, status, product) in enumerate(sorted_bugs, start=1):
-        bug_url = f"{BUGZILLA_BASE_URL}/show_bug.cgi?id={bug_id}"
-        bug_list.append(f"{index}. \"{bug_url}\" - {status} - {product}")
-    
-    text = header + "\n".join(bug_list)
+    # Format the message with product sections
+    text = format_bugs_by_product(all_bugs_info)
     
     payload = {"text": text}
     
     try:
         response = requests.post(GOOGLE_CHAT_WEBHOOK, json=payload)
         response.raise_for_status()
-        print(f"Successfully sent initial bug list to Google Chat ({len(sorted_bugs)} bugs)")
+        print(f"Successfully sent initial bug list to Google Chat ({len(all_bugs_info)} bugs)")
         print(f"Starting to monitor bugs...")
     except requests.exceptions.RequestException as e:
         print(f"Error sending initial list to Google Chat: {e}")
