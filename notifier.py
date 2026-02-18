@@ -53,7 +53,12 @@ def fetch_all_bugs():
     query_params['last_change_time'] = two_months_ago
     
     print(f"Fetching bugs changed in the last 2 months (since {two_months_ago})...")
-    
+
+    # Print the full Bugzilla API URL with all query parameters
+    import urllib.parse
+    full_url = BUGZILLA_URL + "?" + urllib.parse.urlencode(query_params, doseq=True)
+    print(f"Bugzilla API URL: {full_url}")
+
     try:
         response = requests.get(BUGZILLA_URL, params=query_params)
         response.raise_for_status()
@@ -158,69 +163,61 @@ def organize_bugs_by_product(all_bugs_info):
     return bugs_by_product
 
 
-def format_bugs_by_product(all_bugs_info):
+def format_bugs_by_segment(all_segment_bugs, segment_names):
     """
-    Format bugs organized by product with status-wise sorting.
-    
+    Format bugs segmented by QA Contact, Creator, Assigned To, each organized by product.
     Args:
-        all_bugs_info: List of tuples (bug_id, status, product) for all bugs
-    
+        all_segment_bugs: List of lists of bug tuples (bug_id, status, product) for each segment
+        segment_names: List of segment names
     Returns:
-        Formatted string with bugs organized by product sections
+        Formatted string with segments and bugs organized by product
     """
-    bugs_by_product = organize_bugs_by_product(all_bugs_info)
-    
-    # Define product order
-    product_order = ["Bizom Web", "Mobile App", "Internal Tools"]
-    
-    # Add any other products that aren't in the predefined list
-    other_products = [p for p in bugs_by_product.keys() if p not in product_order]
-    product_order.extend(sorted(other_products))
-    
     sections = []
-    total_bugs = len(all_bugs_info)
+    total_bugs = sum(len(bugs) for bugs in all_segment_bugs)
     sections.append(f"📋 *Initial Bug List - {total_bugs} bug(s) found*\n")
-    
-    for product in product_order:
-        if product in bugs_by_product:
-            bugs = bugs_by_product[product]
-            sections.append(f"\n*{product}* - {len(bugs)} bug(s) (sorted by status):")
-            
-            for bug_id, status, _ in bugs:
-                bug_url = f"{BUGZILLA_BASE_URL}/show_bug.cgi?id={bug_id}"
-                sections.append(f"  • \"{bug_url}\" - {status}")
-    
+    for idx, bugs_info in enumerate(all_segment_bugs):
+        if not bugs_info:
+            continue
+        sections.append(f"\n{'='*60}\n{segment_names[idx]} Segment - {len(bugs_info)} bug(s):\n{'='*60}\n")
+        bugs_by_product = organize_bugs_by_product(bugs_info)
+        product_order = ["Bizom Web", "Mobile App", "Internal Tools"]
+        other_products = [p for p in bugs_by_product.keys() if p not in product_order]
+        product_order.extend(sorted(other_products))
+        for product in product_order:
+            if product in bugs_by_product:
+                product_bugs = bugs_by_product[product]
+                sections.append(f"{product} - {len(product_bugs)} bug(s) (sorted by status):")
+                sections.append("-" * 60)
+                for bug_id, status, _ in product_bugs:
+                    bug_url = f"{BUGZILLA_BASE_URL}/show_bug.cgi?id={bug_id}"
+                    sections.append(f'  • "{bug_url}" - {status}')
+                sections.append("")
+        sections.append(f"{'='*60}\n")
     return "\n".join(sections)
 
 
-def send_initial_list_to_google_chat(all_bugs_info):
+def send_initial_list_to_google_chat(all_segment_bugs):
     """
-    Send the initial list of bugs to Google Chat, organized by product with status-wise sorting.
-    
+    Send the initial list of bugs to Google Chat, segmented by QA Contact, Creator, Assigned To.
     Args:
-        all_bugs_info: List of tuples (bug_id, status, product) for all bugs
+        all_segment_bugs: List of lists of tuples (bug_id, status, product) for each segment
     """
     if not GOOGLE_CHAT_WEBHOOK:
         print("Warning: GOOGLE_CHAT_WEBHOOK not configured. Skipping notification.")
         return
-    
-    if not all_bugs_info or len(all_bugs_info) == 0:
+    if not all_segment_bugs or sum(len(bugs) for bugs in all_segment_bugs) == 0:
         return
-    
-    # Format the message with product sections
-    text = format_bugs_by_product(all_bugs_info)
-    
+    segment_names = ["QA Contact", "Creator", "Assigned To"]
+    text = format_bugs_by_segment(all_segment_bugs, segment_names)
     payload = {"text": text}
-    
     try:
+        import requests
         response = requests.post(GOOGLE_CHAT_WEBHOOK, json=payload)
         response.raise_for_status()
-        print(f"Successfully sent initial bug list to Google Chat ({len(all_bugs_info)} bugs)")
+        print(f"Successfully sent initial bug list to Google Chat ({sum(len(bugs) for bugs in all_segment_bugs)} bugs)")
         print(f"Starting to monitor bugs...")
-    except requests.exceptions.RequestException as e:
-        print(f"Error sending initial list to Google Chat: {e}")
     except Exception as e:
-        print(f"Unexpected error sending initial list to Google Chat: {e}")
+        print(f"Error sending initial list to Google Chat: {e}")
 
 
 def send_to_google_chat(bug, previous_status=None):
