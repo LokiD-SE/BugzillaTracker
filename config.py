@@ -40,10 +40,11 @@ def get_query_params():
         "status": BUG_STATUS,  # Use 'status' instead of 'bug_status'
     }
     
-    # Add qa_contact and creator if email is provided
+    # Add assigned_to,qa_contact and creator if email is provided
     if EMAIL:
         params["qa_contact"] = EMAIL
         params["creator"] = EMAIL
+        params["assigned_to"] = EMAIL
     
     # Add product filter only if specified
     if PRODUCT and any(PRODUCT):  # Check if PRODUCT list is not empty
